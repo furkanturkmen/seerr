@@ -163,18 +163,16 @@ function filterPayload(body: unknown, blocked: Set<string>): unknown {
  * always carry a mediaType, and the route always knows. `/movie/603` and
  * `/tv/1399` are the two that matter; their sub-paths - recommendations,
  * similar, ratings - answer with a `results` list and are handled above.
+ *
+ * baseUrl and path are joined rather than either alone. This middleware is
+ * mounted on the parent router, so express reports baseUrl as `/api/v1` and
+ * path as `/movie/603` - reading baseUrl for the media type finds `/api/v1`
+ * and matches nothing, which is exactly the bug this comment exists to stop
+ * anyone reintroducing.
  */
 function detailTarget(req: Request): string | null {
-  const type = req.baseUrl.endsWith('/movie')
-    ? 'movie'
-    : req.baseUrl.endsWith('/tv')
-      ? 'tv'
-      : null;
-  if (!type) {
-    return null;
-  }
-  const match = /^\/(\d+)\/?$/.exec(req.path);
-  return match ? keyOf(type, Number(match[1])) : null;
+  const match = /\/(movie|tv)\/(\d+)\/?$/.exec(`${req.baseUrl}${req.path}`);
+  return match ? keyOf(match[1], Number(match[2])) : null;
 }
 
 export const contentFilter = async (
