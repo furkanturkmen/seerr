@@ -1,112 +1,26 @@
-import { getRepository } from '@server/datasource';
-import { Blocklist } from '@server/entity/Blocklist';
-import type { User } from '@server/entity/User';
+import { MediaStatus } from '@server/constants/media';
+import {
+  blockedFor,
+  keyOf,
+  loadSnapshot,
+} from '@server/lib/contentFilter';
 import logger from '@server/logger';
 import type { NextFunction, Request, Response } from 'express';
-import { Not, IsNull } from 'typeorm';
 
 /**
- * Hide, per user, the titles their blocked tags cover.
+ * Apply the content filter to every response that carries media.
  *
- * The blocklist itself stays global and the job that fills it is untouched.
- * Every blocklist row already records which keyword ids matched it, so who a
- * title is hidden from is a set intersection over data the server has already
- * computed - no second crawl, and no per-user state beyond a list of ids.
+ * The deciding is in lib/contentFilter; this is only the express half - one
+ * middleware wrapping res.json, mounted after checkUser and before every
+ * content route, so the roughly fourteen mapper call sites in the discover
+ * routes alone do not each need finding.
  *
- * It runs as one middleware rather than at the call sites because the mappers
- * are invoked from about fourteen places in the discover routes alone, plus
- * search, watchlist, collections and the detail routes. Filtering there would
- * mean finding every one of them and finding each new one forever after. This
- * wraps `res.json` once, after `checkUser` has attached the user, and covers
- * every route mounted below it.
- *
- * A user with no blocked tags - which is everyone until somebody sets one -
- * short-circuits before any of this, so the cost for an unfiltered account is
- * one property read.
+ * Until the tag crawler has indexed anything, every request short-circuits on
+ * one cached lookup. After that it runs for everyone, including unfiltered
+ * users, and that is deliberate: a tag-driven title reads as BLOCKLISTED to
+ * the whole site, so the people the tag does not apply to need their status
+ * put back or the request button vanishes for them too.
  */
-
-/** How long the blocklist snapshot is trusted. It changes only when the job runs. */
-const CACHE_TTL_MS = 60_000;
-
-type Snapshot = { at: number; byKey: Map<string, number[]> };
-let snapshot: Snapshot | null = null;
-
-/** `movie:603` - mediaType is part of the key because a tmdb id is not unique across types. */
-const keyOf = (mediaType: string, tmdbId: number): string => `${mediaType}:${tmdbId}`;
-
-/**
- * Which keyword ids blocklisted each title.
- *
- * Stored by the job as `,12,34,` - leading and trailing commas, so that a
- * substring test for `,12,` cannot match 123. Parsed the same way here.
- */
-const parseTags = (raw?: string | null): number[] =>
-  (raw ?? '')
-    .split(',')
-    .map((part) => Number(part.trim()))
-    .filter((n) => Number.isInteger(n) && n > 0);
-
-async function loadSnapshot(): Promise<Snapshot> {
-  if (snapshot && Date.now() - snapshot.at < CACHE_TTL_MS) {
-    return snapshot;
-  }
-
-  const rows = await getRepository(Blocklist).find({
-    where: { blocklistedTags: Not(IsNull()) },
-    select: { tmdbId: true, mediaType: true, blocklistedTags: true },
-  });
-
-  const byKey = new Map<string, number[]>();
-  for (const row of rows) {
-    const tags = parseTags(row.blocklistedTags);
-    if (tags.length) {
-      byKey.set(keyOf(row.mediaType, row.tmdbId), tags);
-    }
-  }
-
-  snapshot = { at: Date.now(), byKey };
-  return snapshot;
-}
-
-/** Drop the snapshot, so the next request sees a blocklist that has just changed. */
-export const invalidateContentFilter = (): void => {
-  snapshot = null;
-};
-
-/** The titles this user must not see, or null when they are unfiltered. */
-async function blockedFor(user?: User): Promise<Set<string> | null> {
-  const wanted = (user?.settings?.blockedTags ?? [])
-    .map((tag) => Number(tag))
-    .filter((n) => Number.isInteger(n) && n > 0);
-  if (!wanted.length) {
-    return null;
-  }
-
-  const { byKey } = await loadSnapshot();
-  const blocked = new Set<string>();
-  for (const [key, tags] of byKey) {
-    if (tags.some((tag) => wanted.includes(tag))) {
-      blocked.add(key);
-    }
-  }
-  return blocked;
-}
-
-/**
- * Whether one title is hidden from this user.
- *
- * For the places that decide rather than render - the request route above all.
- * Hiding a title in the lists and then accepting a POST for it would make the
- * filter a matter of not knowing the id.
- */
-export async function isBlockedForUser(
-  user: User | undefined,
-  mediaType: string,
-  tmdbId: number
-): Promise<boolean> {
-  const blocked = await blockedFor(user);
-  return blocked ? blocked.has(keyOf(mediaType, tmdbId)) : false;
-}
 
 const isBlocked = (blocked: Set<string>, item: unknown): boolean => {
   if (!item || typeof item !== 'object') {
@@ -132,12 +46,35 @@ const isBlocked = (blocked: Set<string>, item: unknown): boolean => {
  * them to match a filtered page would make "page 2 of 500" disagree with
  * itself. A short page is the honest result.
  */
-function filterPayload(body: unknown, blocked: Set<string>): unknown {
+function filterPayload(
+  body: unknown,
+  blocked: Set<string>,
+  tagDriven: Set<string>,
+  target: string | null
+): unknown {
   if (!body || typeof body !== 'object') {
     return body;
   }
 
   const payload = body as Record<string, unknown>;
+
+  /*
+   * A detail page this user is *not* filtered from, which the crawler
+   * blocklisted for somebody else.
+   *
+   * MediaStatus.BLOCKLISTED is 6, and the frontend reads it as "nobody may
+   * request this" - the request button disappears and a Blocklisted badge
+   * takes its place. For a tag-driven entry that is only true of the people
+   * filtered on the tag, so for everyone else the real status is restored.
+   * Without this, turning the crawler on hides the request button from the
+   * administrator too, and the filter reads as a broken site.
+   */
+  if (target && tagDriven.has(target) && !blocked.has(target)) {
+    const info = payload.mediaInfo as Record<string, unknown> | undefined;
+    if (info && info.status === MediaStatus.BLOCKLISTED) {
+      return { ...payload, mediaInfo: { ...info, status: MediaStatus.UNKNOWN } };
+    }
+  }
 
   if (Array.isArray(payload.results)) {
     return {
@@ -180,8 +117,11 @@ export const contentFilter = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  let tagDriven: Set<string>;
   let blocked: Set<string> | null = null;
   try {
+    // Which titles the crawler blocklisted, as against blocklisted by hand.
+    tagDriven = new Set((await loadSnapshot()).byKey.keys());
     blocked = await blockedFor(req.user);
   } catch (e) {
     // A filter that cannot load must not take the site down with it. It fails
@@ -194,12 +134,24 @@ export const contentFilter = async (
     return next();
   }
 
-  if (!blocked || blocked.size === 0) {
+  /*
+   * Nothing has been crawled, so there is nothing to hide and nothing whose
+   * status needs correcting. This is the state before the tag list is
+   * configured, and it costs one cached lookup.
+   *
+   * Note the gate is the crawl rather than the user: an *unfiltered* user
+   * still needs this wrapper, because a tag-driven title reads as
+   * BLOCKLISTED to everyone and its status has to be put back for the people
+   * the tag does not apply to. Gating on `blocked` alone hid the request
+   * button from the administrator.
+   */
+  if (tagDriven.size === 0) {
     return next();
   }
 
-  // Captured as a const so it stays narrowed inside the closure below.
-  const hidden = blocked;
+  // Captured as consts so they stay narrowed inside the closure below.
+  const hidden = blocked ?? new Set<string>();
+  const indexed = tagDriven;
   const target = detailTarget(req);
   const originalJson = res.json.bind(res);
 
@@ -212,7 +164,7 @@ export const contentFilter = async (
     }
 
     try {
-      return originalJson(filterPayload(body, hidden));
+      return originalJson(filterPayload(body, hidden, indexed, target));
     } catch (e) {
       logger.error('Content filter failed on a response; passing it through', {
         label: 'Content Filter',

@@ -30,6 +30,10 @@ import {
 } from 'typeorm';
 import Media from './Media';
 import SeasonRequest from './SeasonRequest';
+import {
+  isBlockedForUser,
+  isTagDriven,
+} from '@server/lib/contentFilter';
 import { User } from './User';
 
 export class RequestPermissionError extends Error {}
@@ -161,14 +165,35 @@ export class MediaRequest {
         mediaType: requestBody.mediaType,
       });
     } else {
+      /*
+       * Blocklisted by a tag is not the same as blocklisted by hand.
+       *
+       * A title the crawler picked up carries the tags that matched it, and is
+       * out of bounds only for the people filtered on those tags. Treating it
+       * as blocked for everyone would take the library away from the
+       * administrator who configured the filter, which is the global
+       * behaviour this fork exists to escape.
+       *
+       * A title somebody blocklisted by hand has no tags recorded against it,
+       * so it falls through to the original rule and stays blocked for all.
+       */
       if (media.status === MediaStatus.BLOCKLISTED) {
-        logger.warn('Request for media blocked due to being blocklisted', {
-          tmdbId: tmdbMedia.id,
-          mediaType: requestBody.mediaType,
-          label: 'Media Request',
-        });
+        const byTag = await isTagDriven(requestBody.mediaType, tmdbMedia.id);
+        const blockedForThisUser = byTag
+          ? await isBlockedForUser(user, requestBody.mediaType, tmdbMedia.id)
+          : true;
 
-        throw new BlocklistedMediaError('This media is blocklisted.');
+        if (blockedForThisUser) {
+          logger.warn('Request for media blocked due to being blocklisted', {
+            tmdbId: tmdbMedia.id,
+            mediaType: requestBody.mediaType,
+            userId: user.id,
+            byTag,
+            label: 'Media Request',
+          });
+
+          throw new BlocklistedMediaError('This media is blocklisted.');
+        }
       }
 
       if (
