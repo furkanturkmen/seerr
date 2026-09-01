@@ -55,6 +55,22 @@ export class UserSettings {
   @Column({ nullable: true })
   public pgpKey?: string;
 
+  /**
+   * TMDB keyword ids this user must not be shown.
+   *
+   * The blocklist proper stays global: settings.main.blocklistedTags names the
+   * tags a scheduled job expands into blocklisted titles, and every blocklist
+   * row records which of those tags matched it. That makes per-user filtering
+   * a set intersection over data the server already computes, rather than a
+   * second crawl - a title is hidden from this user when the tags that
+   * blocklisted it meet this list.
+   *
+   * Empty and undefined both mean "show everything", so every account that
+   * existed before this column behaves exactly as it did.
+   */
+  @Column({ type: 'text', nullable: true, transformer: jsonArrayTransformer })
+  public blockedTags: string[];
+
   @Column({ type: 'text', nullable: true, transformer: jsonArrayTransformer })
   public discordIds: string[];
 
