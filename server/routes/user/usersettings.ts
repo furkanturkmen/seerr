@@ -63,6 +63,7 @@ userSettingsRoutes.get<{ id: string }, UserSettingsGeneralResponse>(
         globalTvQuotaLimit: defaultQuotas.tv.quotaLimit,
         watchlistSyncMovies: user.settings?.watchlistSyncMovies,
         watchlistSyncTv: user.settings?.watchlistSyncTv,
+        blockedTags: (user.settings?.blockedTags ?? []).join(','),
       });
     } catch (e) {
       next({ status: 500, message: e.message });
@@ -119,6 +120,23 @@ userSettingsRoutes.post<
       user.tvQuotaLimit = req.body.tvQuotaLimit;
     }
 
+    /*
+     * Only an administrator may set what is hidden from someone.
+     *
+     * This route is isOwnProfileOrAdmin, so without this check a filtered user
+     * could open their own settings page and clear their own filter - which
+     * would make the whole feature a suggestion. Absent from the body, or sent
+     * by anyone else, the existing value is left exactly as it is.
+     */
+    const mayFilter = !!req.user?.hasPermission(Permission.MANAGE_USERS);
+    const blockedTags =
+      mayFilter && req.body.blockedTags !== undefined
+        ? req.body.blockedTags
+            .split(',')
+            .map((tag) => tag.trim())
+            .filter((tag) => /^\d+$/.test(tag))
+        : undefined;
+
     if (!user.settings) {
       user.settings = new UserSettings({
         user: req.user,
@@ -128,6 +146,7 @@ userSettingsRoutes.post<
         originalLanguage: req.body.originalLanguage,
         watchlistSyncMovies: req.body.watchlistSyncMovies,
         watchlistSyncTv: req.body.watchlistSyncTv,
+        blockedTags: blockedTags ?? [],
       });
     } else {
       user.settings.locale = req.body.locale;
@@ -136,6 +155,9 @@ userSettingsRoutes.post<
       user.settings.originalLanguage = req.body.originalLanguage;
       user.settings.watchlistSyncMovies = req.body.watchlistSyncMovies;
       user.settings.watchlistSyncTv = req.body.watchlistSyncTv;
+      if (blockedTags !== undefined) {
+        user.settings.blockedTags = blockedTags;
+      }
     }
 
     const savedUser = await userRepository.save(user);
@@ -148,6 +170,7 @@ userSettingsRoutes.post<
       originalLanguage: savedUser.settings?.originalLanguage,
       watchlistSyncMovies: savedUser.settings?.watchlistSyncMovies,
       watchlistSyncTv: savedUser.settings?.watchlistSyncTv,
+      blockedTags: (savedUser.settings?.blockedTags ?? []).join(','),
       email: savedUser.email,
     });
   } catch (e) {

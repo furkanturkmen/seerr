@@ -52,10 +52,17 @@ type SingleVal = {
 
 type BlocklistedTagsSelectorProps = {
   defaultValue?: string;
+  /**
+   * Which formik field to write to. Defaults to the global blocklist setting
+   * this was written for; the per-user filter passes its own name so the same
+   * control serves both rather than being copied.
+   */
+  fieldName?: string;
 };
 
 const BlocklistedTagsSelector = ({
   defaultValue,
+  fieldName = 'blocklistedTags',
 }: BlocklistedTagsSelectorProps) => {
   const { setFieldValue } = useFormikContext();
   const [value, setValue] = useState<string | undefined>(defaultValue);
@@ -68,9 +75,9 @@ const BlocklistedTagsSelector = ({
       const strVal = value?.map((v) => v.value).join(',');
       setSelectorValue(value);
       setValue(strVal);
-      setFieldValue('blocklistedTags', strVal);
+      setFieldValue(fieldName, strVal);
     },
-    [setSelectorValue, setValue, setFieldValue]
+    [setSelectorValue, setValue, setFieldValue, fieldName]
   );
 
   const copyDisabled = value === null || value?.length === 0;

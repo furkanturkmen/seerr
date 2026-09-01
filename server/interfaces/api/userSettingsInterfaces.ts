@@ -17,6 +17,14 @@ export interface UserSettingsGeneralResponse {
   globalTvQuotaDays?: number;
   watchlistSyncMovies?: boolean;
   watchlistSyncTv?: boolean;
+  /**
+   * TMDB keyword ids hidden from this user, comma delimited.
+   *
+   * A string rather than an array because that is the shape the keyword
+   * selector and the global blocklist setting already speak, so one control
+   * serves both. Only an administrator may write it.
+   */
+  blockedTags?: string;
 }
 
 export type NotificationAgentTypes = Record<NotificationAgentKey, number>;

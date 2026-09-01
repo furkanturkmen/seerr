@@ -2,6 +2,7 @@ import Badge from '@app/components/Common/Badge';
 import Button from '@app/components/Common/Button';
 import LoadingSpinner from '@app/components/Common/LoadingSpinner';
 import PageTitle from '@app/components/Common/PageTitle';
+import BlocklistedTagsSelector from '@app/components/BlocklistedTagsSelector';
 import LanguageSelector from '@app/components/LanguageSelector';
 import QuotaSelector from '@app/components/QuotaSelector';
 import RegionSelector from '@app/components/RegionSelector';
@@ -30,6 +31,9 @@ const messages = defineMessages(
   'components.UserProfile.UserSettings.UserGeneralSettings',
   {
     general: 'General',
+    blockedTags: 'Hidden Content Tags',
+    blockedTagsTip:
+      'Titles carrying these TMDB keywords are hidden from this user, and cannot be searched for or requested by them. Only titles the blocklist has already indexed are affected.',
     generalsettings: 'General Settings',
     displayName: 'Display Name',
     email: 'Email',
@@ -87,6 +91,15 @@ const UserGeneralSettings = () => {
     id: Number(router.query.userId),
   });
   const { user: currentUser, hasPermission: currentHasPermission } = useUser();
+  /*
+   * Who may decide what someone else is shown. Gated the same way the request
+   * quotas are, and for the same reason: a filtered user editing their own
+   * profile must not be able to lift their own filter. The server enforces
+   * this too - the UI only decides whether to draw the control.
+   */
+  const canFilter =
+    currentHasPermission(Permission.MANAGE_USERS) &&
+    !hasPermission(Permission.MANAGE_USERS);
   const { currentSettings } = useSettings();
   const {
     data,
@@ -161,6 +174,7 @@ const UserGeneralSettings = () => {
           tvQuotaDays: data?.tvQuotaDays,
           watchlistSyncMovies: data?.watchlistSyncMovies,
           watchlistSyncTv: data?.watchlistSyncTv,
+          blockedTags: data?.blockedTags,
         }}
         validationSchema={UserGeneralSettingsSchema}
         enableReinitialize
@@ -182,6 +196,7 @@ const UserGeneralSettings = () => {
               tvQuotaDays: tvQuotaEnabled ? values.tvQuotaDays : null,
               watchlistSyncMovies: values.watchlistSyncMovies,
               watchlistSyncTv: values.watchlistSyncTv,
+              ...(canFilter ? { blockedTags: values.blockedTags ?? '' } : {}),
             });
 
             if (currentUser?.id === user?.id && setLocale) {
@@ -596,6 +611,24 @@ const UserGeneralSettings = () => {
                     </div>
                   </div>
                 )}
+              {canFilter && (
+                <div className="form-row">
+                  <label htmlFor="blockedTags" className="text-label">
+                    <span>{intl.formatMessage(messages.blockedTags)}</span>
+                    <span className="label-tip">
+                      {intl.formatMessage(messages.blockedTagsTip)}
+                    </span>
+                  </label>
+                  <div className="form-input-area">
+                    <div className="form-input-field relative z-10">
+                      <BlocklistedTagsSelector
+                        fieldName="blockedTags"
+                        defaultValue={values.blockedTags}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="actions">
                 <div className="flex justify-end">
                   <span className="ml-3 inline-flex rounded-md shadow-sm">

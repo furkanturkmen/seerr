@@ -1482,6 +1482,8 @@
   "components.UserProfile.UserSettings.UserGeneralSettings.accounttype": "Account Type",
   "components.UserProfile.UserSettings.UserGeneralSettings.admin": "Admin",
   "components.UserProfile.UserSettings.UserGeneralSettings.applanguage": "Display Language",
+  "components.UserProfile.UserSettings.UserGeneralSettings.blockedTags": "Hidden Content Tags",
+  "components.UserProfile.UserSettings.UserGeneralSettings.blockedTagsTip": "Titles carrying these TMDB keywords are hidden from this user, and cannot be searched for or requested by them. Only titles the blocklist has already indexed are affected.",
   "components.UserProfile.UserSettings.UserGeneralSettings.discoverRegion": "Discover Region",
   "components.UserProfile.UserSettings.UserGeneralSettings.discoverRegionTip": "Filter content by regional availability",
   "components.UserProfile.UserSettings.UserGeneralSettings.displayName": "Display Name",
