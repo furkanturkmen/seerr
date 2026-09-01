@@ -25,6 +25,7 @@ import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { isAuthenticated } from '@server/middleware/auth';
+import { isBlockedForUser } from '@server/middleware/contentFilter';
 import { Router } from 'express';
 
 const requestRoutes = Router();
@@ -310,6 +311,22 @@ requestRoutes.post<never, MediaRequest, MediaRequestBody>(
           message: 'You must be logged in to request media.',
         });
       }
+
+      // Hiding a title from the lists and then accepting a POST for it would
+      // make the filter a matter of not knowing the id.
+      if (
+        await isBlockedForUser(
+          req.user,
+          req.body.mediaType,
+          Number(req.body.mediaId)
+        )
+      ) {
+        return next({
+          status: 403,
+          message: 'This media is not available to you.',
+        });
+      }
+
       const request = await MediaRequest.request(req.body, req.user);
 
       return res.status(201).json(request);

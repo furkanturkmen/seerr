@@ -12,6 +12,7 @@ import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { checkUser, isAuthenticated } from '@server/middleware/auth';
+import contentFilter from '@server/middleware/contentFilter';
 import deprecatedRoute from '@server/middleware/deprecation';
 import { mapProductionCompany } from '@server/models/Movie';
 import { mapNetwork } from '@server/models/Tv';
@@ -46,6 +47,13 @@ import user from './user';
 const router = Router();
 
 router.use(checkUser);
+
+/*
+ * After checkUser, because it needs the user; before every content route,
+ * because it covers all of them at once rather than each mapper call site.
+ * A user with no blocked tags falls straight through.
+ */
+router.use(contentFilter);
 
 router.get<unknown, StatusResponse>('/status', async (req, res) => {
   const settings = getSettings();
