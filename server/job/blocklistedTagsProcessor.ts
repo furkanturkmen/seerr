@@ -4,7 +4,7 @@ import type {
   TmdbSearchMovieResponse,
   TmdbSearchTvResponse,
 } from '@server/api/themoviedb/interfaces';
-import { MediaType } from '@server/constants/media';
+import { MediaStatus, MediaType } from '@server/constants/media';
 import dataSource from '@server/datasource';
 import { Blocklist } from '@server/entity/Blocklist';
 import Media from '@server/entity/Media';
@@ -205,21 +205,41 @@ class BlocklistedTagProcessor implements RunnableScanner<StatusBase> {
   }
 
   private async cleanBlocklist(em: EntityManager) {
-    // Remove blocklist and media entries blocklisted by tags
+    /*
+     * Clear what the crawler wrote last time, and nothing a person did.
+     *
+     * Upstream removes the *media* rows and lets the blocklist entries go with
+     * them by cascade. Under stock semantics that follows - blocklisted means
+     * banned outright, so purging the title's history is consistent. Here it
+     * is not: a tag decides who a title is hidden from, not whether it may
+     * exist, and media_request cascades off media. Crawling a tag that matched
+     * something already requested silently destroyed five requests, including
+     * ones made by the administrator the filter does not even apply to.
+     *
+     * So the blocklist rows go directly, and a media row is removed only when
+     * the crawler is the reason it exists - nothing has ever been requested
+     * against it. That still clears the thousands of rows a crawl creates for
+     * titles nobody owns, without touching a request.
+     */
+    await em
+      .getRepository(Blocklist)
+      .createQueryBuilder()
+      .delete()
+      .where('blocklistedTags IS NOT NULL')
+      .execute();
+
     const mediaRepository = em.getRepository(Media);
-    const mediaToRemove = await mediaRepository
+    const orphans = await mediaRepository
       .createQueryBuilder('media')
-      .innerJoinAndSelect(
-        Blocklist,
-        'blist',
-        'blist.tmdbId = media.tmdbId AND blist.mediaType = media.mediaType'
+      .where('media.status = :status', { status: MediaStatus.BLOCKLISTED })
+      .andWhere(
+        'NOT EXISTS (SELECT 1 FROM media_request r WHERE r.mediaId = media.id)'
       )
-      .where(`blist.blocklistedTags IS NOT NULL`)
       .getMany();
 
     // Batch removes so the query doesn't get too large
-    for (let i = 0; i < mediaToRemove.length; i += 500) {
-      await mediaRepository.remove(mediaToRemove.slice(i, i + 500)); // This also deletes the blocklist entries via cascading
+    for (let i = 0; i < orphans.length; i += 500) {
+      await mediaRepository.remove(orphans.slice(i, i + 500));
     }
   }
 }

@@ -1,9 +1,5 @@
-import { MediaStatus } from '@server/constants/media';
-import { getRepository } from '@server/datasource';
-import { Blocklist } from '@server/entity/Blocklist';
+import dataSource from '@server/datasource';
 import type { User } from '@server/entity/User';
-import logger from '@server/logger';
-import { Not, IsNull } from 'typeorm';
 
 /**
  * Who may see which titles, decided from the tags that blocklisted them.
@@ -65,10 +61,23 @@ export async function loadSnapshot(): Promise<Snapshot> {
     return snapshot;
   }
 
-  const rows = await getRepository(Blocklist).find({
-    where: { blocklistedTags: Not(IsNull()) },
-    select: { tmdbId: true, mediaType: true, blocklistedTags: true },
-  });
+  /*
+   * Read as SQL rather than through the Blocklist entity, and deliberately.
+   *
+   * The request entity needs this same answer, so importing the entity here
+   * closed a cycle - MediaRequest to this file to Blocklist to Media and back
+   * to MediaRequest. TypeORM registers entity metadata as those modules are
+   * imported, so a cycle can leave one of them undefined when the decorators
+   * run, and the damage is silent: the tag crawler completed instantly,
+   * indexed nothing, and logged not one error.
+   *
+   * Three columns of one table, no relations, read only. There is nothing an
+   * entity would add here beyond the import that broke it.
+   */
+  const rows: { tmdbId: number; mediaType: string; blocklistedTags: string }[] =
+    await dataSource.query(
+      'SELECT tmdbId, mediaType, blocklistedTags FROM blocklist WHERE blocklistedTags IS NOT NULL'
+    );
 
   const byKey = new Map<string, number[]>();
   for (const row of rows) {
