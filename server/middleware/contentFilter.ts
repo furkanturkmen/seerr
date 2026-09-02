@@ -22,15 +22,45 @@ import type { NextFunction, Request, Response } from 'express';
  * put back or the request button vanishes for them too.
  */
 
+/**
+ * Whether a row in a `results` list refers to a title this user cannot see.
+ *
+ * Two shapes, because two kinds of list pass through here. A discover or
+ * search result *is* the title and carries the TMDB id as `id`. A request row
+ * is *about* a title and carries it as `media.tmdbId` - its own `id` belongs
+ * to the request. Matching only the outer shape left a filtered user seeing
+ * their own requests for hidden titles and then getting a 404 for opening one,
+ * which reads as a broken site. A row they cannot act on is worse than no row.
+ */
 const isBlocked = (blocked: Set<string>, item: unknown): boolean => {
   if (!item || typeof item !== 'object') {
     return false;
   }
-  const { id, mediaType } = item as { id?: unknown; mediaType?: unknown };
-  if (typeof id !== 'number' || typeof mediaType !== 'string') {
-    return false;
+  const row = item as {
+    id?: unknown;
+    mediaType?: unknown;
+    media?: { tmdbId?: unknown; mediaType?: unknown };
+  };
+
+  if (
+    typeof row.id === 'number' &&
+    typeof row.mediaType === 'string' &&
+    blocked.has(keyOf(row.mediaType, row.id))
+  ) {
+    return true;
   }
-  return blocked.has(keyOf(mediaType, id));
+
+  const media = row.media;
+  if (
+    media &&
+    typeof media === 'object' &&
+    typeof media.tmdbId === 'number' &&
+    typeof media.mediaType === 'string'
+  ) {
+    return blocked.has(keyOf(media.mediaType, media.tmdbId));
+  }
+
+  return false;
 };
 
 /**
