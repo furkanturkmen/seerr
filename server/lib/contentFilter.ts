@@ -1,5 +1,6 @@
 import dataSource from '@server/datasource';
 import type { User } from '@server/entity/User';
+import { ADULT_TAGS } from '@server/lib/adultTags';
 
 /**
  * Who may see which titles, decided from the tags that blocklisted them.
@@ -96,11 +97,31 @@ export const invalidateContentFilter = (): void => {
   snapshot = null;
 };
 
+/**
+ * The keyword ids hidden from this user, from both directions.
+ *
+ * blockedTags is what an administrator imposed. hideAdult is the user's own
+ * switch, and it only ever adds - so somebody allowed to see adult content can
+ * still choose not to, and turning the switch off returns them to the
+ * administrator's list rather than to nothing.
+ */
+export function hiddenTagsFor(user?: User): number[] {
+  const wanted = new Set(
+    (user?.settings?.blockedTags ?? [])
+      .map((tag) => Number(tag))
+      .filter((n) => Number.isInteger(n) && n > 0)
+  );
+  if (user?.settings?.hideAdult) {
+    for (const id of ADULT_TAGS) {
+      wanted.add(id);
+    }
+  }
+  return [...wanted];
+}
+
 /** The titles this user must not see, or null when they are unfiltered. */
 export async function blockedFor(user?: User): Promise<Set<string> | null> {
-  const wanted = (user?.settings?.blockedTags ?? [])
-    .map((tag) => Number(tag))
-    .filter((n) => Number.isInteger(n) && n > 0);
+  const wanted = hiddenTagsFor(user);
   if (!wanted.length) {
     return null;
   }

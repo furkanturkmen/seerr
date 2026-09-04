@@ -25,6 +25,21 @@ export interface UserSettingsGeneralResponse {
    * serves both. Only an administrator may write it.
    */
   blockedTags?: string;
+  /**
+   * Whether the user has asked not to be shown adult content.
+   *
+   * Unlike blockedTags this is the user's own, so it is writable on your own
+   * profile. It only ever adds to what an administrator hid.
+   */
+  hideAdult?: boolean;
+  /**
+   * Which keyword ids the switch above stands for, comma delimited.
+   *
+   * Read only, and sent so that the things acting on this - the app, and the
+   * service that stamps the Jellyfin library - do not each need their own copy
+   * of the list to drift from.
+   */
+  adultTags?: string;
 }
 
 export type NotificationAgentTypes = Record<NotificationAgentKey, number>;

@@ -34,6 +34,9 @@ const messages = defineMessages(
     blockedTags: 'Hidden Content Tags',
     blockedTagsTip:
       'Titles carrying these TMDB keywords are hidden from this user, and cannot be searched for or requested by them. Only titles the blocklist has already indexed are affected.',
+    hideAdult: 'Hide Adult Content',
+    hideAdultTip:
+      'Hides erotic and pornographic titles from discover, search, requests and the media library. This one is yours to set; any hidden content tags an administrator applied stay in force on top of it.',
     generalsettings: 'General Settings',
     displayName: 'Display Name',
     email: 'Email',
@@ -175,6 +178,7 @@ const UserGeneralSettings = () => {
           watchlistSyncMovies: data?.watchlistSyncMovies,
           watchlistSyncTv: data?.watchlistSyncTv,
           blockedTags: data?.blockedTags,
+          hideAdult: data?.hideAdult ?? false,
         }}
         validationSchema={UserGeneralSettingsSchema}
         enableReinitialize
@@ -197,6 +201,9 @@ const UserGeneralSettings = () => {
               watchlistSyncMovies: values.watchlistSyncMovies,
               watchlistSyncTv: values.watchlistSyncTv,
               ...(canFilter ? { blockedTags: values.blockedTags ?? '' } : {}),
+              // Not gated on canFilter: this is the user's own switch, and the
+              // server only ever lets it hide more than it already hides.
+              hideAdult: values.hideAdult,
             });
 
             if (currentUser?.id === user?.id && setLocale) {
@@ -611,6 +618,24 @@ const UserGeneralSettings = () => {
                     </div>
                   </div>
                 )}
+              <div className="form-row">
+                <label htmlFor="hideAdult" className="checkbox-label">
+                  <span>{intl.formatMessage(messages.hideAdult)}</span>
+                  <span className="label-tip">
+                    {intl.formatMessage(messages.hideAdultTip)}
+                  </span>
+                </label>
+                <div className="form-input-area">
+                  <Field
+                    type="checkbox"
+                    id="hideAdult"
+                    name="hideAdult"
+                    onChange={() => {
+                      setFieldValue('hideAdult', !values.hideAdult);
+                    }}
+                  />
+                </div>
+              </div>
               {canFilter && (
                 <div className="form-row">
                   <label htmlFor="blockedTags" className="text-label">

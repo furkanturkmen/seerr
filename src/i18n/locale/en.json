@@ -1491,6 +1491,8 @@
   "components.UserProfile.UserSettings.UserGeneralSettings.enableOverride": "Override Global Limit",
   "components.UserProfile.UserSettings.UserGeneralSettings.general": "General",
   "components.UserProfile.UserSettings.UserGeneralSettings.generalsettings": "General Settings",
+  "components.UserProfile.UserSettings.UserGeneralSettings.hideAdult": "Hide Adult Content",
+  "components.UserProfile.UserSettings.UserGeneralSettings.hideAdultTip": "Hides erotic and pornographic titles from discover, search, requests and the media library. This one is yours to set; any hidden content tags an administrator applied stay in force on top of it.",
   "components.UserProfile.UserSettings.UserGeneralSettings.languageDefault": "Default ({language})",
   "components.UserProfile.UserSettings.UserGeneralSettings.localuser": "Local User",
   "components.UserProfile.UserSettings.UserGeneralSettings.mediaServerUser": "{mediaServerName} User",

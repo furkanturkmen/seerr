@@ -71,6 +71,20 @@ export class UserSettings {
   @Column({ type: 'text', nullable: true, transformer: jsonArrayTransformer })
   public blockedTags: string[];
 
+  /**
+   * Whether this user has asked not to be shown adult content.
+   *
+   * Separate from blockedTags because the two have different owners. Hidden
+   * content tags are imposed by an administrator and a user must not be able
+   * to lift them; this is the user's own preference and only ever narrows what
+   * they see, so they may set it themselves. Turning it off returns them to
+   * whatever the administrator set, never to less than that.
+   *
+   * The keyword ids it stands for are in lib/adultTags.
+   */
+  @Column({ nullable: true })
+  public hideAdult?: boolean;
+
   @Column({ type: 'text', nullable: true, transformer: jsonArrayTransformer })
   public discordIds: string[];
 

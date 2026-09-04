@@ -6,6 +6,7 @@ import { UserType } from '@server/constants/user';
 import { getRepository } from '@server/datasource';
 import { User } from '@server/entity/User';
 import { UserSettings } from '@server/entity/UserSettings';
+import { ADULT_TAGS } from '@server/lib/adultTags';
 import type {
   UserSettingsGeneralResponse,
   UserSettingsNotificationsResponse,
@@ -64,6 +65,8 @@ userSettingsRoutes.get<{ id: string }, UserSettingsGeneralResponse>(
         watchlistSyncMovies: user.settings?.watchlistSyncMovies,
         watchlistSyncTv: user.settings?.watchlistSyncTv,
         blockedTags: (user.settings?.blockedTags ?? []).join(','),
+        hideAdult: !!user.settings?.hideAdult,
+        adultTags: ADULT_TAGS.join(','),
       });
     } catch (e) {
       next({ status: 500, message: e.message });
@@ -137,6 +140,17 @@ userSettingsRoutes.post<
             .filter((tag) => /^\d+$/.test(tag))
         : undefined;
 
+    /*
+     * The user's own switch, deliberately outside the check above.
+     *
+     * It can only ever hide more than the administrator asked for, so there is
+     * nothing to protect against here - and gating it on MANAGE_USERS would
+     * mean nobody could turn it on for themselves, which is the whole point of
+     * it. Absent from the body, the stored value is left alone.
+     */
+    const hideAdult =
+      req.body.hideAdult !== undefined ? !!req.body.hideAdult : undefined;
+
     if (!user.settings) {
       user.settings = new UserSettings({
         user: req.user,
@@ -147,6 +161,7 @@ userSettingsRoutes.post<
         watchlistSyncMovies: req.body.watchlistSyncMovies,
         watchlistSyncTv: req.body.watchlistSyncTv,
         blockedTags: blockedTags ?? [],
+        hideAdult: hideAdult ?? false,
       });
     } else {
       user.settings.locale = req.body.locale;
@@ -157,6 +172,9 @@ userSettingsRoutes.post<
       user.settings.watchlistSyncTv = req.body.watchlistSyncTv;
       if (blockedTags !== undefined) {
         user.settings.blockedTags = blockedTags;
+      }
+      if (hideAdult !== undefined) {
+        user.settings.hideAdult = hideAdult;
       }
     }
 
@@ -171,6 +189,8 @@ userSettingsRoutes.post<
       watchlistSyncMovies: savedUser.settings?.watchlistSyncMovies,
       watchlistSyncTv: savedUser.settings?.watchlistSyncTv,
       blockedTags: (savedUser.settings?.blockedTags ?? []).join(','),
+      hideAdult: !!savedUser.settings?.hideAdult,
+      adultTags: ADULT_TAGS.join(','),
       email: savedUser.email,
     });
   } catch (e) {
