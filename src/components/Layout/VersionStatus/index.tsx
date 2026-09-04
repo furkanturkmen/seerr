@@ -19,6 +19,17 @@ const messages = defineMessages('components.Layout.VersionStatus', {
     '{commitsBehind} {commitsBehind, plural, one {commit} other {commits}} behind',
 });
 
+/**
+ * What the badge says when this is a build somebody made themselves.
+ *
+ * Upstream puts "Keep it up! 👍" and "(⌐■_■)" here, which reads as an in-joke
+ * from a project this is no longer quite running. Left hardcoded rather than
+ * moved into `messages` for the same reason upstream hardcoded its own: it
+ * names this build, and a name is not prose to translate.
+ */
+const FORK_NAME = 'JellyLab fork';
+const FORK_DETAIL = 'per-user filters';
+
 interface VersionStatusProps {
   onClick?: () => void;
 }
@@ -39,7 +50,7 @@ const VersionStatus = ({ onClick }: VersionStatusProps) => {
 
   const versionStream =
     data.commitTag === 'local'
-      ? 'Keep it up! 👍'
+      ? FORK_NAME
       : data.version.startsWith('develop-')
         ? intl.formatMessage(messages.streamdevelop)
         : intl.formatMessage(messages.streamstable);
@@ -73,7 +84,7 @@ const VersionStatus = ({ onClick }: VersionStatusProps) => {
         {data.commitsBehind !== undefined && (
           <span className="truncate">
             {data.commitTag === 'local' ? (
-              '(⌐■_■)'
+              FORK_DETAIL
             ) : data.commitsBehind > 0 ? (
               intl.formatMessage(messages.commitsbehind, {
                 commitsBehind: data.commitsBehind,
